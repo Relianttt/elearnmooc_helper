@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         网课全自动助手 (elearnmooc)
-// @name:en      Auto Course Helper (elearnmooc)
+// @name:en      elearnmooc_helper
 // @icon         https://www.elearnmooc.com/favicon.ico
 // @namespace    https://github.com/Relianttt
 // @version      0.99
