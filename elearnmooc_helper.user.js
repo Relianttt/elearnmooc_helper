@@ -3,7 +3,7 @@
 // @name:en      elearnmooc_helper
 // @icon         https://www.elearnmooc.com/favicon.ico
 // @namespace    https://github.com/Relianttt
-// @version      0.99
+// @version      1.0
 // @description  elearnmooc 网课全自动助手：图形化控制面板，支持自动倍速播放、静音、自动连播下一节、智能处理结束弹窗、列表页自动检索未完成任务
 // @description:en  Auto course helper for elearnmooc: GUI control panel with auto playback speed, mute, auto-next, smart popup handling, and auto-scan for incomplete tasks
 // @author       reliant
