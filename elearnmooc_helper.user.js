@@ -11,13 +11,81 @@
 // @icon         https://www.elearnmooc.com/favicon.ico
 // @match        *://www.elearnmooc.com/*
 // @match        *://elearnmooc.com/*
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @run-at       document-end
 // @noframes
 // ==/UserScript==
 
 (function () {
     'use strict';
+
+    // --- 存储封装（GM 优先，fallback localStorage）---
+    function decodeStoredValue(raw, fallback) {
+        if (raw === undefined) return fallback;
+        // GM/localStorage 可能返回 string / number / boolean / object（历史版本可能直接存 object）
+        if (typeof raw !== 'string') return raw;
+        try {
+            return JSON.parse(raw);
+        } catch {
+            // 兼容历史“非 JSON 字符串”场景
+            return raw;
+        }
+    }
+
+    function encodeStoredValue(value) {
+        // 统一编码为 JSON 字符串，保证跨脚本管理器类型一致
+        if (value === undefined) return undefined;
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return undefined;
+        }
+    }
+
+    function storageGet(key, fallback) {
+        // 1) GM（全站统一）
+        try {
+            if (typeof GM_getValue === 'function') {
+                const raw = GM_getValue(key);
+                if (raw !== undefined) return decodeStoredValue(raw, fallback);
+            }
+        } catch { }
+
+        // 2) localStorage（同域 fallback，并尝试自动迁移到 GM）
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw !== null) {
+                const decoded = decodeStoredValue(raw, fallback);
+                try {
+                    if (typeof GM_setValue === 'function') {
+                        const enc = encodeStoredValue(decoded);
+                        if (enc !== undefined) GM_setValue(key, enc);
+                    }
+                } catch { }
+                return decoded;
+            }
+        } catch { }
+
+        return fallback;
+    }
+
+    function storageSet(key, value) {
+        if (value === undefined) {
+            // Keep the old value rather than accidentally wiping user config due to a bug upstream.
+            try { console.warn('[mooc-helper] storageSet: value is undefined; skip write for key:', key); } catch { }
+            return;
+        }
+        const enc = encodeStoredValue(value);
+        if (enc === undefined) {
+            // e.g. circular structure passed in
+            try { console.warn('[mooc-helper] storageSet: failed to encode value; skip write for key:', key); } catch { }
+            return;
+        }
+        // GM + localStorage 双写：GM 负责全站统一，localStorage 负责无 GM 环境下可用
+        try { if (typeof GM_setValue === 'function') GM_setValue(key, enc); } catch { }
+        try { localStorage.setItem(key, enc); } catch { }
+    }
 
     // --- 配置存储键名 ---
     const STORAGE_KEY = 'mooc_auto_helper_config';
@@ -30,29 +98,20 @@
         autoScan: true
     };
 
-    // --- 从 localStorage 加载配置 ---
+    // --- 加载/保存配置 ---
     function loadConfig() {
-        try {
-            const saved = localStorage.getItem(STORAGE_KEY);
-            if (saved) {
-                return { ...defaultConfig, ...JSON.parse(saved) };
-            }
-        } catch (e) {
-            console.log('加载配置失败，使用默认值');
+        const saved = storageGet(STORAGE_KEY, null);
+        if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+            return { ...defaultConfig, ...saved };
         }
         return { ...defaultConfig };
     }
 
-    // --- 保存配置到 localStorage ---
     function saveConfig() {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-        } catch (e) {
-            console.log('保存配置失败');
-        }
+        storageSet(STORAGE_KEY, config);
     }
 
-    // --- 全局配置（从 localStorage 加载）---
+    // --- 全局配置（从存储加载）---
     let config = loadConfig();
 
     // --- 模拟鼠标点击 ---
@@ -103,14 +162,18 @@
 
     // --- UI 界面渲染 ---
     const POS_KEY = 'mooc_auto_helper_pos';
-    const savedPos = (() => { try { return JSON.parse(localStorage.getItem(POS_KEY)); } catch { return null; } })();
+    const savedPos = (() => {
+        const raw = storageGet(POS_KEY, null);
+        if (raw && Number.isFinite(raw.top) && Number.isFinite(raw.left)) return raw;
+        return null;
+    })();
 
     const panel = document.createElement('div');
     Object.assign(panel.style, {
         position: 'fixed',
         top: savedPos ? savedPos.top + 'px' : '120px',
-        left: savedPos ? savedPos.left + 'px' : '',
-        right: savedPos ? '' : '20px',
+        left: savedPos ? savedPos.left + 'px' : 'auto',
+        right: savedPos ? 'auto' : '20px',
         zIndex: '99999',
         width: '210px',
         padding: '15px',
@@ -122,7 +185,7 @@
         userSelect: 'none'
     });
     panel.innerHTML = `
-        <h4 id="panelDragHandle" style="margin:0 0 10px;font-size:16px;color:#007bff;text-align:center;cursor:move;">⠿ 网课自动助手</h4>
+        <h4 id="panelDragHandle" style="margin:0 0 10px;font-size:16px;color:#007bff;text-align:center;cursor:move;touch-action:none;">⠿ 网课自动助手</h4>
         <div style="margin-bottom:12px;">
             <label style="font-size:13px;">倍速: <span id="speedVal">2.0</span>x</label>
             <input type="range" id="speedRange" min="0.5" max="10.0" step="0.5" value="2.0" style="width:100%;">
@@ -134,18 +197,28 @@
     `;
     document.body.appendChild(panel);
 
-    // --- 拖拽逻辑 ---
+    // --- 初始化时 clamp 位置到当前视口 ---
+    if (savedPos) {
+        const maxLeft = window.innerWidth - panel.offsetWidth;
+        const maxTop = window.innerHeight - panel.offsetHeight;
+        panel.style.left = Math.max(0, Math.min(savedPos.left, maxLeft)) + 'px';
+        panel.style.top = Math.max(0, Math.min(savedPos.top, maxTop)) + 'px';
+    }
+
+    // --- 拖拽逻辑（使用 Pointer Events 兼容触屏）---
     const dragHandle = panel.querySelector('#panelDragHandle');
     let isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
 
-    dragHandle.addEventListener('mousedown', (e) => {
+    dragHandle.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return; // 仅响应左键/主指
         isDragging = true;
         dragOffsetX = e.clientX - panel.getBoundingClientRect().left;
         dragOffsetY = e.clientY - panel.getBoundingClientRect().top;
+        dragHandle.setPointerCapture(e.pointerId);
         e.preventDefault();
     });
 
-    document.addEventListener('mousemove', (e) => {
+    document.addEventListener('pointermove', (e) => {
         if (!isDragging) return;
         let newLeft = e.clientX - dragOffsetX;
         let newTop = e.clientY - dragOffsetY;
@@ -157,17 +230,18 @@
         panel.style.right = 'auto';
     });
 
-    document.addEventListener('mouseup', () => {
+    function endDrag() {
         if (!isDragging) return;
         isDragging = false;
         // 保存位置
-        try {
-            localStorage.setItem(POS_KEY, JSON.stringify({
-                top: parseInt(panel.style.top),
-                left: parseInt(panel.style.left)
-            }));
-        } catch { }
-    });
+        storageSet(POS_KEY, {
+            top: parseInt(panel.style.top),
+            left: parseInt(panel.style.left)
+        });
+    }
+
+    document.addEventListener('pointerup', endDrag);
+    document.addEventListener('pointercancel', endDrag);
 
     // --- 获取 UI 元素 ---
     const speedRange = panel.querySelector('#speedRange');
