@@ -102,10 +102,27 @@
     }
 
     // --- UI 界面渲染 ---
+    const POS_KEY = 'mooc_auto_helper_pos';
+    const savedPos = (() => { try { return JSON.parse(localStorage.getItem(POS_KEY)); } catch { return null; } })();
+
     const panel = document.createElement('div');
-    panel.style = "position:fixed;top:120px;right:20px;z-index:99999;width:210px;padding:15px;background:#fff;border:2px solid #007bff;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.2);font-family:sans-serif;";
+    Object.assign(panel.style, {
+        position: 'fixed',
+        top: savedPos ? savedPos.top + 'px' : '120px',
+        left: savedPos ? savedPos.left + 'px' : '',
+        right: savedPos ? '' : '20px',
+        zIndex: '99999',
+        width: '210px',
+        padding: '15px',
+        background: '#fff',
+        border: '2px solid #007bff',
+        borderRadius: '10px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+        fontFamily: 'sans-serif',
+        userSelect: 'none'
+    });
     panel.innerHTML = `
-        <h4 style="margin:0 0 10px;font-size:16px;color:#007bff;text-align:center;">网课自动助手</h4>
+        <h4 id="panelDragHandle" style="margin:0 0 10px;font-size:16px;color:#007bff;text-align:center;cursor:move;">⠿ 网课自动助手</h4>
         <div style="margin-bottom:12px;">
             <label style="font-size:13px;">倍速: <span id="speedVal">2.0</span>x</label>
             <input type="range" id="speedRange" min="0.5" max="10.0" step="0.5" value="2.0" style="width:100%;">
@@ -116,6 +133,41 @@
         <div id="statusInfo" style="font-size:12px;color:#666;padding-top:8px;border-top:1px solid #eee;text-align:center;">识别中...</div>
     `;
     document.body.appendChild(panel);
+
+    // --- 拖拽逻辑 ---
+    const dragHandle = panel.querySelector('#panelDragHandle');
+    let isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
+
+    dragHandle.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        dragOffsetX = e.clientX - panel.getBoundingClientRect().left;
+        dragOffsetY = e.clientY - panel.getBoundingClientRect().top;
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        let newLeft = e.clientX - dragOffsetX;
+        let newTop = e.clientY - dragOffsetY;
+        // 边界约束
+        newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - panel.offsetWidth));
+        newTop = Math.max(0, Math.min(newTop, window.innerHeight - panel.offsetHeight));
+        panel.style.left = newLeft + 'px';
+        panel.style.top = newTop + 'px';
+        panel.style.right = 'auto';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        // 保存位置
+        try {
+            localStorage.setItem(POS_KEY, JSON.stringify({
+                top: parseInt(panel.style.top),
+                left: parseInt(panel.style.left)
+            }));
+        } catch { }
+    });
 
     // --- 获取 UI 元素 ---
     const speedRange = panel.querySelector('#speedRange');
