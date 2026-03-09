@@ -355,7 +355,14 @@
                                 if (icon.style.display !== 'none') {
                                     // 使用模拟点击触发播放
                                     statusInfo.innerText = "状态: 发现未播放任务，正在进入...";
-                                    simulateClick(icon);
+                                    const markerName = 'data-mooc-helper-click-target';
+                                    const markerValue = String(Date.now()) + Math.random().toString(16).slice(2);
+                                    icon.setAttribute(markerName, markerValue);
+                                    const injected = document.createElement('script');
+                                    injected.textContent = "(function(){var icon=document.querySelector('[data-mooc-helper-click-target=\"" + markerValue + "\"]');if(!icon)return;var jq=window.jQuery;if(jq&&jq.fn&&typeof jq.fn.triggerHandler==='function'){jq(icon).triggerHandler('click');}else if(jq&&jq.fn&&typeof jq.fn.trigger==='function'){jq(icon).trigger('click');}else if(icon.click){icon.click();}})();";
+                                    (document.documentElement || document.body).appendChild(injected);
+                                    injected.remove();
+                                    icon.removeAttribute(markerName);
                                     return;
                                 }
                             }
