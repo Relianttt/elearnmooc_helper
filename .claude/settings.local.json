@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node run.js:*)",
+      "mcp__fast-context__fast_context_search"
+    ]
+  }
+}

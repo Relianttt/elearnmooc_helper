@@ -337,14 +337,14 @@
         if (scanCheck.checked) {
             const statusLabels = document.querySelectorAll('.loadStatus');
             for (let label of statusLabels) {
-                if (label.innerText.includes("进行中")) {
+                if (label.innerText.includes("未完成")) {
                     const chapterHeader = label.closest('.chapter_title_box');
                     if (chapterHeader) {
                         const parent = chapterHeader.parentElement;
                         const contentArea = parent.querySelector('.chapter_content');
 
                         if (contentArea && (contentArea.style.display === 'none' || getComputedStyle(contentArea).display === 'none')) {
-                            statusInfo.innerText = "状态: 正在展开进行中章节...";
+                            statusInfo.innerText = "状态: 正在展开未完成章节...";
                             chapterHeader.click();
                             return;
                         }
@@ -352,7 +352,7 @@
                         if (contentArea) {
                             const allPlayIcons = contentArea.querySelectorAll('i.fa-play-circle.video_play_icon');
                             for (let icon of allPlayIcons) {
-                                if (!icon.classList.contains('setColor')) {
+                                if (icon.style.display !== 'none') {
                                     // 使用模拟点击触发播放
                                     statusInfo.innerText = "状态: 发现未播放任务，正在进入...";
                                     simulateClick(icon);
