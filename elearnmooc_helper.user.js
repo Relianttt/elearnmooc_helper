@@ -3,9 +3,9 @@
 // @name:en      elearnmooc_helper
 // @icon         https://www.elearnmooc.com/favicon.ico
 // @namespace    https://github.com/Relianttt
-// @version      1.2.1
-// @description  elearnmooc 网课全自动助手：图形化控制面板，支持自动倍速播放、静音、自动连播下一节、智能处理结束弹窗、列表页自动检索未完成任务
-// @description:en  Auto course helper for elearnmooc: GUI control panel with auto playback speed, mute, auto-next, smart popup handling, and auto-scan for incomplete tasks
+// @version      1.2.3
+// @description  elearnmooc 网课全自动助手：图形化控制面板，支持自动倍速播放/跳转结束、静音、自动连播下一节、智能处理结束弹窗、列表页自动检索未完成任务
+// @description:en  Auto course helper for elearnmooc: GUI control panel with auto playback speed/skip-to-end, mute, auto-next, smart popup handling, and auto-scan for incomplete tasks
 // @author       reliant
 // @license      MIT
 // @icon         https://www.elearnmooc.com/favicon.ico
@@ -92,6 +92,7 @@
 
     // --- 默认配置 ---
     const defaultConfig = {
+        playMode: 'speed',
         speed: 2.0,
         isMuted: true,
         autoNext: true,
@@ -186,6 +187,13 @@
     });
     panel.innerHTML = `
         <h4 id="panelDragHandle" style="margin:0 0 10px;font-size:16px;color:#007bff;text-align:center;cursor:move;touch-action:none;">⠿ 网课自动助手</h4>
+        <div style="margin-bottom:10px;">
+            <label style="font-size:13px;">播放模式</label>
+            <select id="playModeSelect" style="width:100%;margin-top:4px;padding:4px;border:1px solid #ccc;border-radius:4px;">
+                <option value="speed">倍速播放</option>
+                <option value="skipEnd">跳转播放</option>
+            </select>
+        </div>
         <div style="margin-bottom:12px;">
             <label style="font-size:13px;">倍速: <span id="speedVal">2.0</span>x</label>
             <input type="range" id="speedRange" min="0.5" max="10.0" step="0.5" value="2.0" style="width:100%;">
@@ -244,6 +252,7 @@
     document.addEventListener('pointercancel', endDrag);
 
     // --- 获取 UI 元素 ---
+    const playModeSelect = panel.querySelector('#playModeSelect');
     const speedRange = panel.querySelector('#speedRange');
     const speedVal = panel.querySelector('#speedVal');
     const statusInfo = panel.querySelector('#statusInfo');
@@ -252,13 +261,27 @@
     const scanCheck = panel.querySelector('#scanCheck');
 
     // --- 从配置恢复 UI 状态 ---
+    playModeSelect.value = config.playMode;
     speedRange.value = config.speed;
     speedVal.innerText = config.speed;
     muteCheck.checked = config.isMuted;
     nextCheck.checked = config.autoNext;
     scanCheck.checked = config.autoScan;
 
+    function refreshSpeedControlState() {
+        const isSpeedMode = config.playMode === 'speed';
+        speedRange.disabled = !isSpeedMode;
+        speedRange.style.opacity = isSpeedMode ? '1' : '0.45';
+    }
+
+    refreshSpeedControlState();
+
     // --- 绑定事件：更改时保存配置 ---
+    playModeSelect.onchange = () => {
+        config.playMode = playModeSelect.value;
+        refreshSpeedControlState();
+        saveConfig();
+    };
     speedRange.oninput = () => {
         config.speed = parseFloat(speedRange.value);
         speedVal.innerText = config.speed;
@@ -269,6 +292,8 @@
     scanCheck.onchange = () => { config.autoScan = scanCheck.checked; saveConfig(); };
 
     // --- 核心逻辑 ---
+    const SKIP_END_REMAINING_SECONDS = 3;
+
     function mainLoop() {
         const video = document.querySelector('video.videoplayer');
         const nextBtn = document.querySelector('.next_chapter');
@@ -322,7 +347,17 @@
         if (video) {
             statusInfo.innerText = "状态: 正在监控播放器";
             video.muted = muteCheck.checked;
-            if (video.playbackRate !== config.speed) video.playbackRate = config.speed;
+            if (config.playMode === 'skipEnd') {
+                video.playbackRate = 1;
+                if (Number.isFinite(video.duration) &&
+                    video.duration > SKIP_END_REMAINING_SECONDS &&
+                    video.currentTime < video.duration - SKIP_END_REMAINING_SECONDS - 0.5) {
+                    statusInfo.innerText = "状态: 已跳到最后几秒播放";
+                    video.currentTime = Math.max(0, video.duration - SKIP_END_REMAINING_SECONDS);
+                }
+            } else if (video.playbackRate !== config.speed) {
+                video.playbackRate = config.speed;
+            }
             if (video.paused && !video.ended) video.play().catch(() => { });
 
             video.onended = () => {
